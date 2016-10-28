@@ -1,0 +1,132 @@
+json数据传输
+1.模板文件
+<div class="container">
+        <div class="container">
+                <h3>Poems:</h3>
+                <ul id="ul">
+                        <li>Results:</li>
+                </ul>
+                <button class="btn get-more">Get More Poem</button>
+        </div>
+        <div class="container">
+                <label>Poems</label>
+                <textarea class="textArea" id="textArea" rows="10" clos="70"></textarea>
+                <button class="btn add-poem">add poem</button>
+        </div>
+</div>
+
+<script src="http://apps.bdimg.com/libs/jquery/1.11.1/jquery.min.js"></script>
+/*防跨站攻击*/
+<script src="http://www.ziqiangxuetang.com/media/django/csrf.js"></script>
+<script>
+$(document).ready(function(){
+        $(".get-more").click(function(){
+                $.ajax({
+                        type: "GET",
+                        url: {% url "more_poems" %},
+                        dataType: "json",
+                        success: function(data){
+                                json_str = JSON.stringify(data);
+                                json_data = JSON.parse(json_str);
+                                for(var i in json_data){
+                                        item = json_data[i];
+                                        $('ul').append("<li>"+item.title+" "+item.author+"</li>");
+
+                                }
+                        }
+                });
+        });
+
+        $(".add-poem").click(function(){
+                $.ajax({
+                        type:"POST",
+                        url:{% url "add_poems" %},
+                        dataType:"text",
+			/*传递给服务器数据*/
+                        data:{"poems":$(".textArea").val()},
+
+			/*data为服务器返回数据*/
+                        success:function(data){
+                                alert(data);
+                        }
+                });
+        });
+});
+</script>
+
+
+2.urls.py
+urlpatterns = [
+    url(r'^admin/', admin.site.urls),
+    url(r'^$', views.home, name='home'),
+
+    url(r'^more_poems/$', views.more_poems, name='more_poems'),
+    url(r'^add_poems/$', views.add_poems, name='add_poems'),
+]
+
+3.views.py
+def more_poems(request):
+        if request.is_ajax():
+                objects = Poem.objects.all()
+                data = get_json_objects(objects, Poem)
+                return HttpResponse(data, content_type="application/json")
+        else:
+                return Http404()
+
+def json_field(field_data):
+        if isinstance(field_data, str):
+                return "\""+field_data+"\""
+        if isinstance(field_data, bool):
+                if field_data:
+                        return 'true'
+                else:
+                        return 'false'
+        return "\""+str(field_data)+"\""
+
+def json_encode_dict(dict_data):
+
+
+        json_data = "{"
+        for(k, v) in dict_data.items():
+                json_data = json_data + json_field(k) + ":" + json_field(v) + ", "
+        json_data = json_data[:-2] + "}"
+        return json_data
+
+def json_encode_list(list_data):
+        json_data = "["
+        for item in list_data:
+                json_data = json_data + json_encode_dict(item) + ", "
+
+        return json_data[:-2]+"]"
+
+def get_json_objects(objects, model_meta):
+        concrete_model = model_meta._meta.concrete_model
+        list_data = []
+        for obj in objects:
+                dict_data = {}
+                for field in concrete_model._meta.local_fields:
+                        key = field.name
+                        if key == 'id':
+                                continue
+                        value = field.value_from_object(obj)
+                        dict_data[key]=value
+                list_data.append(dict_data)
+
+        data = json_encode_list(list_data)
+        return data
+
+import ast
+def add_poems(request):
+        if request.is_ajax() and request.POST:
+                json_str = request.POST.get("poems")
+                data = "post success"
+                json_list = ast.literal_eval(json_str)
+                for item in json_list:
+                        new_obj = Poem()
+                        for field in item:
+                                setattr(new_obj, field, item[field])
+                        print(new_obj.author, new_obj.title)
+                        new_obj.save()
+                return HttpResponse(data, content_type="application/text")
+        else:
+                return Http404
